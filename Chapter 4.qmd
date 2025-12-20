@@ -1,0 +1,416 @@
+---
+title: "Chapter 4"
+format: html
+editor: visual
+---
+
+```{r}
+#| warning: false
+#| message: false
+
+library(tidyverse)
+library(cmdstanr)
+library(tidybayes)
+library(bayesplot)
+library(patchwork)
+```
+
+```{r}
+df <- read_csv("https://raw.githubusercontent.com/MatsuuraKentaro/Bayesian_Statistical_Modeling_with_Stan_R_and_Python/refs/heads/master/chap04/input/data-salary.csv")
+```
+
+###4.1.2 Check Data Distribution
+
+```{r}
+ggplot(df, aes(x = X, y = Y)) + 
+  geom_point() + 
+  theme_bw()
+
+```
+
+###4.1.3 Describe Model Formula
+
+$$
+\begin{aligned}
+Y[n] = y_{base}[n] + \epsilon[n] && n = 1,...,N \\
+y_{base}[n] = a + bX[n] && n = 1,...,N \\
+\epsilon[n] \sim N(0, \sigma) && n = 1,...,N
+\end{aligned}
+$$
+$$
+\begin{aligned} 
+y_n ~ N(\mu_n, \sigma) \\ 
+\mu_n = a + bx \\
+
+a \sim N(0, 1) \\
+b \sim N(0, 1) \\
+\sigma \sim exp(1) \\
+\end{aligned}
+$$
+
+###4.1.4 Maximum Likelihood Estimation using R 
+
+```{r}
+res_lm <- lm(Y ~ X, data = df)
+res_lm
+```
+
+```{r}
+x_pred <- tibble(X = 0:28)
+
+conf_95 <- predict(res_lm, x_pred, interval = "confidence", level = 0.95) |>
+  as_tibble() |> 
+  rename(conf_lwr = lwr, conf_upr = upr) |> 
+  select(-fit)
+
+pred_95 <- predict(res_lm, x_pred, interval = "prediction", level = 0.95) |> 
+  as_tibble() |> 
+  rename(pred_lwr = lwr, pred_upr = upr)
+
+```
+
+```{r}
+plot_df <- bind_cols(x_pred, conf_95, pred_95) 
+```
+
+```{r}
+ggplot(plot_df, aes(x = X, y = fit)) +
+  geom_line() + 
+  geom_ribbon(aes(ymin = pred_lwr, ymax = pred_upr),
+              fill = "grey50", alpha = 0.5) + 
+  geom_ribbon(aes(ymin = conf_lwr, ymax = conf_upr),
+              fill = "grey20", alpha = 0.5) +  
+  geom_point(data = df, aes(x = X, y = Y), size = 2, shape = 1) + 
+  ylab("Y") + 
+  xlab("X") + 
+  labs(
+    title = "Fig 4.2",
+    caption = "light grey indicates 95% prediction interval
+                dark grey indicates 95% confidence interval"
+    ) 
+  
+```
+
+### 4.1.5 Implement the Model with Stan
+
+```{r}
+data <- list(N = nrow(df), X = df$X, Y = df$Y)
+
+model <- cmdstan_model(stan_file = "model/model4-4.stan")
+
+fit <- model$sample(data = data, seed = 123, refresh = 1000)
+```
+
+
+```{r}
+fit$cmdstan_summary()
+```
+
+###4.2.3 Save the Estimation Result 
+
+```{r}
+fit$save_object(file = "output/result-model4-4.rds")
+```
+
+
+`bayesplot` package provides a simple way to make MCMC plots but limited in customization.
+```{r}
+draws_array <- fit$draws(variables = c("a", "b", "sigma"))
+
+trace_p <- mcmc_trace(draws_array, facet_args = list(ncol = 1))
+
+dense_p <- mcmc_dens(draws_array, )
+
+dense_p + trace_p 
+```
+
+Using `tidybayes` and `ggplot2` can customize plots. But more hassle. 
+```{r}
+draws_tidy <- fit |> 
+  gather_draws(a, b, sigma)
+
+trace_tidy <- ggplot(draws_tidy, aes(x = .iteration, y = .value, color = factor(.chain))) + 
+  geom_line() +
+  facet_wrap(~ .variable, scales = "free_y", ncol = 1) +
+  ylab("") +
+  xlab("iteration") +
+  labs(
+    title = "Trace Plot"
+  ) +
+  scale_color_discrete(
+    name = "Chain"
+  )
+
+dens_tidy <- ggplot(draws_tidy, aes(x = .value, color = factor(.chain))) + 
+  geom_density() +
+  facet_wrap(~ .variable, scales = "free", ncol = 1) + 
+  theme(legend.position = "none") +
+  ylab("") +
+  xlab("") +
+  labs(
+    title = "Density Plot"
+  )
+
+trace_tidy + dens_tidy + 
+  plot_layout(guides = "collect")
+```
+
+### 4.2.4 Adjust the settings of MCMC
+
+Changing initial values
+```{r}
+init_fun <- function(chain_id) {
+  set.seed(chain_id)
+  list(
+    a = runif(1,min = 30, max = 50), 
+    b = rnorm(1, 0, 2), 
+    sigma = runif(1, min = 2, max = 5)
+    )
+}
+
+fit <- model$sample(
+  data = data, 
+  seed = 123,
+  init = init_fun,
+  chains = 3, 
+  iter_warmup = 500,
+  iter_sampling = 500,
+  thin = 2,  
+  parallel_chains = 3,
+  save_warmup = TRUE,
+  refresh = 500
+)
+```
+
+Within-chain parallelization requires setting threads when compiling the model before sampling.
+
+```{r}
+model_threading <- cmdstan_model(
+  stan_file = "model/model4-4.stan", 
+  cpp_options = list(stan_threads = TRUE)
+  )
+
+fit_thread <- model_threading$sample(
+  data = data, 
+  seed = 123,
+  init = init_fun,
+  chains = 3, 
+  iter_warmup = 500,
+  iter_sampling = 500,
+  thin = 2,  
+  parallel_chains = 3,
+  threads_per_chain = 2,
+  save_warmup = TRUE,
+  refresh = 500
+)
+```
+
+### 4.2.5 Draw the MCMC sample
+
+```{r}
+d_ms <- fit$draws(format = "df") #using cmdstanr function
+
+d_tidy <- tidy_draws(fit) #using tidybayes
+
+```
+
+### 4.2.6 Joint Posterior Distributions 
+
+The generated MCMC sample is the draws from the posterior distribution, which is the joint distribution of a, b, and $/sigma$
+```{r}
+d_ms
+```
+
+```{r}
+draws_wide <- fit |> 
+  spread_draws(a, b)
+
+p_center <- ggplot(draws_wide, aes(x = a, y = b)) +
+  geom_point(alpha = 0.3, color = "blue") +
+  theme_bw()
+
+ggExtra::ggMarginal(p_center, type = "histogram", fill = "white"s)
+```
+
+### 4.2.7 Byaesian Confidence Intervals and Bayesian Prediction Intervals 
+
+```{r}
+N_ms <- nrow(d_ms)
+
+y10_base <- d_ms$a + d_ms$b * 10 #x = 10, 10 years of experience 
+y10_pred <- rnorm(n = N_ms, mean = y10_base, sd = d_ms$sigma)
+```
+
+Figure 4.8
+```{r}
+yp_base_ms <- matrix(nrow=N_ms, ncol=Np)
+
+yp_ms <- matrix(nrow=N_ms, ncol=Np)
+
+Xp <- seq(0, 28, by = 1)
+Np <- length(Xp)
+
+for (n in 1:Np) {
+  yp_base_ms[,n] <- d_ms$a + d_ms$b * Xp[n] #confidence interval not incorporating randomness
+  yp_ms[,n] <- rnorm(n=N_ms, mean=yp_base_ms[,n], sd=d_ms$sigma) #prediction interval 
+}
+
+qua <- apply(yp_base_ms, 2, quantile, probs = c(0.025, 0.25, 0.5, 0.75, 0.975)) #calculate quantile for each Xp 
+
+
+
+d_est <- data.frame(
+  X = Xp, 
+  t(qua), #transpose of qua 
+  check.names = FALSE
+  )
+
+qua_pred <- apply(yp_ms, 2, quantile, probs = c(0.025, 0.25, 0.5, 0.75, 0.975))
+
+d_pred <- data.frame(
+  X = Xp,
+  t(qua_pred),
+  check.names = FALSE
+)
+
+fig_left <- ggplot() +
+  theme_bw(base_size=18) +
+  geom_ribbon(data=d_est, aes(x=X, ymin=`2.5%`, ymax=`97.5%`), fill='black', alpha=1/6) +
+  geom_ribbon(data=d_est, aes(x=X, ymin=`25%`, ymax=`75%`), fill='black', alpha=2/6) +
+  geom_line(data=d_est, aes(x=X, y=`50%`), linewidth=1) +
+  geom_point(data=df, aes(x=X, y=Y), shape=1, size=3) +
+  coord_cartesian(ylim = c(32, 67)) +
+  scale_y_continuous(breaks=seq(40, 60, 10)) +
+  labs(y='Y')
+
+fig_right <- ggplot() +
+  theme_bw(base_size=18) +
+  geom_ribbon(data=d_pred, aes(x=X, ymin=`2.5%`, ymax=`97.5%`), fill='black', alpha=1/6) +
+  geom_ribbon(data=d_pred, aes(x=X, ymin=`25%`, ymax=`75%`), fill='black', alpha=2/6) +
+  geom_line(data=d_pred, aes(x=X, y=`50%`), linewidth=1) +
+  geom_point(data=df, aes(x=X, y=Y), shape=1, size=3) +
+  coord_cartesian(ylim = c(32, 67)) +
+  scale_y_continuous(breaks=seq(40, 60, 10)) +
+  labs(y='Y')
+
+fig_left | fig_right
+```
+
+### 4.3 `transformed parameters` Block and  `generated quantities` Block
+
+### 4.5 Exercises 
+
+```{r}
+set.seed(123)
+N1 <- 30
+N2 <- 20 
+Y1 <- rnorm(n = N1, mean = 0, sd = 5)
+Y2 <- rnorm(n = N2, mean = 1, sd = 4)
+
+df <- tibble(
+  id = 1:50,
+  value = c(Y1, Y2),
+  group = c(rep("Y1", 30), rep("Y2", 20))
+)
+```
+
+(1) Visualize the data from these two groups so that we can intuitively see whether the difference exists between them.
+```{r}
+ggplot(df, aes(x = value, y = group)) + 
+  geom_boxplot()
+```
+
+(2) Write a model formula with the assumption that these two groups have the same SD. This corresponds to the Students’ t-test.
+
+```{r}
+t.test(value ~ group, data = df)
+```
+
+(3) Create the model ile of (2) in Stan and estimate the parameters. Don’t use generated quantities block here yet, because in the next (4) we will be practicing how to make use of draws from R or Python.
+```{stan}
+data {
+  int<lower=0> N1;
+  int<lower=0> N2;
+  vector[N1] Y1;
+  vector[N2] Y2;
+}
+
+
+parameters {
+  real mu1;
+  real mu2;
+  real<lower = 0> sigma;
+}
+
+
+model {
+
+  Y1[1:N1] ~ normal(mu1, sigma);
+  Y2[1:N2] ~ normal(mu2, sigma);
+
+}
+```
+
+```{r}
+stan_data <- list(
+  N1 = N1,
+  N2 = N2,
+  Y1 = Y1,
+  Y2 = Y2
+)
+```
+(4) Compute from the obtained draws using R or Python (hint:  we can count how many times the event occurrs in the entire draws, and divide this quantity by the total number of draws).
+
+```{r}
+model_equal <- cmdstan_model("model/model4-exercise.stan")
+
+fit_equal <- model_equal$sample(data = stan_data, seed = 123)
+```
+
+```{r}
+draws_equal <- fit_equal |> tidy_draws()
+
+mu_diff <- draws_equal$mu1 < draws_equal$mu2
+
+sum(mu_diff)/nrow(draws_equal)
+```
+
+```{stan}
+data {
+  int<lower=0> N1;
+  int<lower=0> N2;
+  vector[N1] Y1;
+  vector[N2] Y2;
+}
+
+
+parameters {
+  real mu1;
+  real mu2;
+  real<lower = 0> sigma1;
+  real<lower = 0> sigma2;
+}
+
+
+model {
+
+  Y1[1:N1] ~ normal(mu1, sigma1);
+  Y2[1:N2] ~ normal(mu2, sigma2);
+
+}
+```
+
+```{r}
+model_uneq <- cmdstan_model("model/model4-exercise2.stan")
+
+fit_uneq <- model_uneq$sample(data = stan_data, refresh = 1000)
+
+draws_uneq <- fit_uneq |> tidy_draws()
+
+mu_comp <- draws_uneq$mu1 < draws_uneq$mu2
+
+sum(mu_comp)/nrow(draws_uneq)
+
+mean(draws_uneq$mu1 < draws_uneq$mu2)
+```
+
