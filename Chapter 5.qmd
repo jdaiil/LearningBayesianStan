@@ -1,0 +1,308 @@
+---
+title: "Chapter 5"
+format: html
+---
+
+```{r}
+#| warning: false
+#| message: false
+
+library(tidyverse)
+library(cmdstanr)
+library(tidybayes)
+library(bayesplot)
+library(ggthemes)
+```
+
+Data analysis workflow
+1.  Set up purposes: research questions
+2.  Check data distribution: visualization/check descriptive statistics
+3.  Imagine data generating mechanism: Relationship between variables/which probability distribution
+4.  Describe model formula: mathematical formulas
+5.  Simulate models: Generate the data from the models <prior sampling or simulation>
+6.  Implement models: Running Stan
+7.  Estimate parameters: Running Stan 
+8.  Check models: parameter recovery using simulated data, pp check, convergence check
+9.  Interpret results: interpret and visualize the results
+
+
+```{r}
+df <- read_csv("https://raw.githubusercontent.com/MatsuuraKentaro/Bayesian_Statistical_Modeling_with_Stan_R_and_Python/refs/heads/master/chap05/input/data-shopping-1.csv") |> 
+  mutate(
+    Income = Income/100,
+    Sex = factor(Sex)
+  )
+```
+
+
+### 5.1.1 Set up Purposes
+How well Y can be explained by `Sex` and `Income`. Also, how each factor contributes to explaining Y (beta coefficient)
+
+
+### 5.1.2 Check Data Distribution
+```{r}
+ggplot(df, aes(x = Income, y = Sex, color = Sex)) + 
+  geom_boxplot() +
+  geom_jitter()
+
+ggplot(df, aes(x = Sex, y = Y)) + 
+  geom_boxplot() + 
+  geom_jitter(aes(shape = Sex)) + 
+  theme_bw()
+
+
+ggplot(df, aes(x = Income, y = Y)) +
+  geom_point(aes(shape = Sex, color = Sex)) +
+  theme_calc()
+
+ggplot(df, aes(x = Y, group = Sex)) + 
+  geom_density(alpha = 0.5, aes(fill = Sex)) + 
+  geom_histogram(color = "grey", aes(fill = Sex), alpha = 0.5)
+```
+
+### 5.1.3 Imagine Data Generating Mechanisms
+
+Y is determined by the linear combination of `Sex` and `Income`
+
+$$ 
+Y = b_1 + b_2Sex + b_3Income + \epsilon
+$$
+
+### 5.1.4 Describe Model Formula
+$$
+\begin{aligned}
+Y[n] = b_1 + b_2Sex[n] + b_3Income[n] + \epsilon[n] && n = 1,...,N \\
+\epsilon[n] \sim N(0,\sigma) && n = 1,...,N \\
+
+OR \\
+
+Y[n] \sim N(b_1 + b_2Sex[n] + b_3Income[n] + \epsilon[n], \sigma) && n = 1,...,N \\
+
+OR\\
+
+Y[n] \sim N(\mu[n], \sigma) && n = 1,...,N\\
+\mu[n] = b_1 + b_2Sex[n] + b_3Income[n]
+
+\end{aligned}
+$$
+### 5.1.5 Implement the Model
+```{stan}
+data {
+  int N;
+  vector<lower=0, upper=1>[N] Sex;
+  vector<lower=0>[N] Income;
+  vector<lower = 0, upper=1> [N] Y;
+}
+
+
+parameters { //What MCMC estimates 
+  vector[3] b; //regression coefficients can be stored as a vector 
+  real<lower = 0> sigma;
+}
+
+
+//useful when need to use parameters after estimation 
+//like when sampling from the posterior or for predictive check 
+transformed parameters { 
+  
+   vector[N] mu = b[1] + b[2]*Sex[1:N] + b[3]*Income[1:N]; //mu is linear combination of b1:b3, thus can be defined in the transformed parameters. In other words, mu is transformed using parameters defined in the parameters block 
+
+}
+
+model {
+
+  Y[1:n] ~ normal(mu[1:n], sigma)
+
+}
+
+//can use any variables before the model blocks 
+generated quantities {
+  array[N] real yp = normal_rng(mu[1:N], sigma) 
+}
+```
+
+### 5.1.6 Estimate Parameters 
+```{r}
+set.seed(123)
+
+df <- df |> 
+  mutate(
+    Sex = as.numeric(Sex) - 1
+    )
+
+
+N <- nrow(df)
+
+Y_sim_mean <- 0.2 + 0.15*(df$Sex) + 0.4*df$Income
+
+Y_sim <- rnorm(N, Y_sim_mean, sd = 0.1)
+
+df_sim <- list(
+  N = N, 
+  Sex = df$Sex, 
+  Income = df$Income,
+  Y = Y_sim)  #every Y_sim is sampled from different normal distribution with different mean 
+
+stan_data <- list(
+  N = N,
+  Sex = df$Sex,
+  Income = df$Income, 
+  Y = df$Y
+)
+```
+
+```{r}
+model <- cmdstan_model(stan_file = "model/model5-3.stan")
+
+fit_sim <- model$sample(
+  data = df_sim, 
+  seed = 123, 
+  parallel_chains = 4,
+  refresh = 1000
+  )
+
+fit <- model$sample(
+  data = stan_data,
+  seed = 123,
+  parallel_chains = 4,
+  refresh = 1000
+)
+
+```
+
+### 5.1.7 Interpret Results 
+
+```{r}
+fit
+fit_sim
+```
+
+### 5.2.1 PP Check 
+
+Figure 5.2 right plot 
+```{r}
+draw_df <- fit |> 
+  tidy_draws()
+
+
+
+tidy_pred <- draw_df |> 
+  select(
+    starts_with("yp")
+  ) 
+
+summary_pred <- tidy_pred |> 
+  summarise(
+    across(
+      .cols = everything(),
+      .fns = list(
+        mean = ~ mean(.x),
+        upr = ~ quantile(.x, 0.9),
+        lwr = ~ quantile(.x, 0.1)
+        ),
+      .names = "{.col}_{.fn}"
+      )
+    ) |> 
+  pivot_longer(
+    cols = everything(),
+    names_to = "metric",
+    values_to = "value"
+  ) |> 
+  separate(
+    col = metric,
+    into = c("pred", "metric"),
+    sep = "_"
+  ) |> 
+  pivot_wider(
+    values_from = "value",
+    names_from = "metric"
+  )
+
+#equivalent short-cut
+
+draw_df |> 
+  select(starts_with("yp")) |> 
+  median_qi(.width = 0.8) 
+
+df_pred <- df |> 
+  bind_cols(summary_pred)
+```
+
+
+```{r}
+ggplot(df_pred, aes(x = Y, y = mean)) +
+  geom_point(aes(shape = factor(Sex)), size = 2) + 
+  geom_abline(slope = 1) + 
+  geom_errorbar(aes(ymin = lwr, ymax = upr), width = 0) + 
+  xlab("Observed") + 
+  ylab("Predicted") + 
+  theme_calc()
+```
+Another way to do PP check 
+
+```{r}
+draw_df
+
+fit$draws(format = "df")
+
+
+```
+
+```{r}
+pp_data <- fit |>
+  spread_draws(yp[i]) |>
+  filter(.draw <= 100) # Subset for performance
+
+ggplot(pp_data, aes(x = yp, group = .draw)) + #.draw indicates joint distribution. 
+  geom_density(color = "lightblue", alpha = 0.5, linewidth = 0.5) +
+  geom_density(data = tibble(Y = stan_data$Y), aes(x = Y), inherit.aes = FALSE, linewidth = 1) +
+  theme_minimal() +
+  labs(title = "Posterior Predictive Check", x = "Y")
+
+#short-cut
+
+yrep <- fit$draws(variables = "yp", format = "draws_matrix")
+
+indice <- sample(nrow(yrep), 100)
+yrep_small <- yrep[indice, ]
+
+ppc_dens_overlay(
+  y = stan_data$Y,
+  yrep = yrep_small
+)
+```
+
+### 5.2.2 Posterior Residual Check 
+
+```{r}
+ppc_error_hist(
+  y = stan_data$Y, 
+  yrep = yrep[1:4, ]
+  )
+
+ppc_error_scatter_avg_grouped(
+  y = stan_data$Y,
+  yrep = yrep[1:50, ],
+  group = factor(stan_data$Sex, labels = c("Female", "Male"))
+)
+
+ppc_error_hist_grouped(
+  y = stan_data$Y, 
+  yrep[1:4, ], 
+  group = factor(stan_data$Sex, labels = c("Female", "Male"))
+  )
+
+```
+
+### 5.2.3 Scatterplot Matrix of MCMC Sample
+
+```{r}
+draw_mcmc <- fit$draws(format = "data.frame") |> 
+  select(starts_with("b"), "sigma")
+
+mcmc_pairs(
+  draw_mcmc,
+  off_diag_args = list(size = 0.75)
+  )
+```
+

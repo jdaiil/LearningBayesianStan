@@ -1,7 +1,10 @@
 ---
 title: "Chapter 4"
-format: html
-editor: visual
+author: Daiil Jun
+date-modified: Today
+format: 
+  html: 
+    embed-resources: true
 ---
 
 ```{r}
@@ -36,8 +39,8 @@ Y[n] = y_{base}[n] + \epsilon[n] && n = 1,...,N \\
 y_{base}[n] = a + bX[n] && n = 1,...,N \\
 \epsilon[n] \sim N(0, \sigma) && n = 1,...,N
 \end{aligned}
-$$
-$$
+$$ 
+
 \begin{aligned} 
 y_n ~ N(\mu_n, \sigma) \\ 
 \mu_n = a + bx \\
@@ -46,9 +49,10 @@ a \sim N(0, 1) \\
 b \sim N(0, 1) \\
 \sigma \sim exp(1) \\
 \end{aligned}
-$$
 
-###4.1.4 Maximum Likelihood Estimation using R 
+\$\$
+
+###4.1.4 Maximum Likelihood Estimation using R
 
 ```{r}
 res_lm <- lm(Y ~ X, data = df)
@@ -101,19 +105,18 @@ model <- cmdstan_model(stan_file = "model/model4-4.stan")
 fit <- model$sample(data = data, seed = 123, refresh = 1000)
 ```
 
-
 ```{r}
 fit$cmdstan_summary()
 ```
 
-###4.2.3 Save the Estimation Result 
+###4.2.3 Save the Estimation Result
 
 ```{r}
 fit$save_object(file = "output/result-model4-4.rds")
 ```
 
-
 `bayesplot` package provides a simple way to make MCMC plots but limited in customization.
+
 ```{r}
 draws_array <- fit$draws(variables = c("a", "b", "sigma"))
 
@@ -124,7 +127,8 @@ dense_p <- mcmc_dens(draws_array, )
 dense_p + trace_p 
 ```
 
-Using `tidybayes` and `ggplot2` can customize plots. But more hassle. 
+Using `tidybayes` and `ggplot2` can customize plots. But more hassle.
+
 ```{r}
 draws_tidy <- fit |> 
   gather_draws(a, b, sigma)
@@ -158,6 +162,7 @@ trace_tidy + dens_tidy +
 ### 4.2.4 Adjust the settings of MCMC
 
 Changing initial values
+
 ```{r}
 init_fun <- function(chain_id) {
   set.seed(chain_id)
@@ -214,9 +219,10 @@ d_tidy <- tidy_draws(fit) #using tidybayes
 
 ```
 
-### 4.2.6 Joint Posterior Distributions 
+### 4.2.6 Joint Posterior Distributions
 
 The generated MCMC sample is the draws from the posterior distribution, which is the joint distribution of a, b, and $/sigma$
+
 ```{r}
 d_ms
 ```
@@ -229,10 +235,10 @@ p_center <- ggplot(draws_wide, aes(x = a, y = b)) +
   geom_point(alpha = 0.3, color = "blue") +
   theme_bw()
 
-ggExtra::ggMarginal(p_center, type = "histogram", fill = "white"s)
+ggExtra::ggMarginal(p_center, type = "histogram", fill = "white")
 ```
 
-### 4.2.7 Byaesian Confidence Intervals and Bayesian Prediction Intervals 
+### 4.2.7 Byaesian Confidence Intervals and Bayesian Prediction Intervals
 
 ```{r}
 N_ms <- nrow(d_ms)
@@ -242,13 +248,16 @@ y10_pred <- rnorm(n = N_ms, mean = y10_base, sd = d_ms$sigma)
 ```
 
 Figure 4.8
+
 ```{r}
+
+Xp <- seq(0, 28, by = 1)
+Np <- length(Xp)
+
 yp_base_ms <- matrix(nrow=N_ms, ncol=Np)
 
 yp_ms <- matrix(nrow=N_ms, ncol=Np)
 
-Xp <- seq(0, 28, by = 1)
-Np <- length(Xp)
 
 for (n in 1:Np) {
   yp_base_ms[,n] <- d_ms$a + d_ms$b * Xp[n] #confidence interval not incorporating randomness
@@ -296,9 +305,9 @@ fig_right <- ggplot() +
 fig_left | fig_right
 ```
 
-### 4.3 `transformed parameters` Block and  `generated quantities` Block
+### 4.3 `transformed parameters` Block and `generated quantities` Block
 
-### 4.5 Exercises 
+### 4.5 Exercises
 
 ```{r}
 set.seed(123)
@@ -315,6 +324,7 @@ df <- tibble(
 ```
 
 (1) Visualize the data from these two groups so that we can intuitively see whether the difference exists between them.
+
 ```{r}
 ggplot(df, aes(x = value, y = group)) + 
   geom_boxplot()
@@ -327,7 +337,11 @@ t.test(value ~ group, data = df)
 ```
 
 (3) Create the model ile of (2) in Stan and estimate the parameters. Don’t use generated quantities block here yet, because in the next (4) we will be practicing how to make use of draws from R or Python.
+
 ```{stan}
+#| output.var: "model"
+#| eval: false
+
 data {
   int<lower=0> N1;
   int<lower=0> N2;
@@ -359,7 +373,8 @@ stan_data <- list(
   Y2 = Y2
 )
 ```
-(4) Compute from the obtained draws using R or Python (hint:  we can count how many times the event occurrs in the entire draws, and divide this quantity by the total number of draws).
+
+(4) Compute from the obtained draws using R or Python (hint: we can count how many times the event occurrs in the entire draws, and divide this quantity by the total number of draws).
 
 ```{r}
 model_equal <- cmdstan_model("model/model4-exercise.stan")
@@ -376,6 +391,9 @@ sum(mu_diff)/nrow(draws_equal)
 ```
 
 ```{stan}
+#| output.var: "model"
+#| eval: false
+
 data {
   int<lower=0> N1;
   int<lower=0> N2;
@@ -415,6 +433,7 @@ mean(draws_uneq$mu1 < draws_uneq$mu2)
 ```
 
 Visualize the results
+
 ```{r}
 draws_uneq |> 
   pivot_longer(
@@ -433,4 +452,3 @@ draws_uneq |>
 
 
 ```
-
