@@ -414,3 +414,23 @@ sum(mu_comp)/nrow(draws_uneq)
 mean(draws_uneq$mu1 < draws_uneq$mu2)
 ```
 
+Visualize the results
+```{r}
+draws_uneq |> 
+  pivot_longer(
+    cols = c(mu1:sigma2),
+    names_to = "var",
+    values_to = "value"
+  ) |> 
+  mutate(
+    group = if_else(
+      str_detect(var, pattern = "1"), "group1", "group2"
+    )
+  ) |> 
+  ggplot(aes(x = value, y = var, fill = group)) + 
+  geom_violin(draw_quantiles = c(0.25,0.5,0.75)) +
+  theme_bw()
+
+
+```
+
