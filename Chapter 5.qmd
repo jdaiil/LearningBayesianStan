@@ -1,6 +1,9 @@
 ---
 title: "Chapter 5"
-format: html
+format: 
+  html:
+    toc: true
+    embed-resources: true
 ---
 
 ```{r}
@@ -12,6 +15,8 @@ library(cmdstanr)
 library(tidybayes)
 library(bayesplot)
 library(ggthemes)
+library(patchwork)
+library(easystats)
 ```
 
 Data analysis workflow
@@ -87,6 +92,9 @@ Y[n] \sim N(\mu[n], \sigma) && n = 1,...,N\\
 $$
 ### 5.1.5 Implement the Model
 ```{stan}
+#| eval: false
+#| output.var: "model"
+
 data {
   int N;
   vector<lower=0, upper=1>[N] Sex;
@@ -304,5 +312,499 @@ mcmc_pairs(
   draw_mcmc,
   off_diag_args = list(size = 0.75)
   )
+```
+
+### Short-cut using Bayesplot
+1.  PP check
+
+posterior predictive check - density plot 
+```{r}
+#in order to use ppc plot, yrep must be matrix 
+pp_draw <- fit$draws(format = "draws_matrix", variables = "yp")
+
+#using only subset
+yrep <- pp_draw[sample(nrow(pp_draw), 50), ]
+
+ppc_dens_overlay(
+  y = stan_data$Y,
+  yrep = yrep
+  )
+```
+
+posterior predictive check - interval plot 
+```{r}
+ppc_intervals(
+  y = stan_data$Y,
+  yrep = yrep, 
+  x = stan_data$Y
+) + 
+  xlab("Observed")
+```
+
+posterior residual check 
+```{r}
+ppc_error_hist(
+  y = stan_data$Y,
+  yrep = yrep[1:9, ]
+)
+```
+
+
+2.  Scatter plot matrix
+```{r}
+mcmc_pairs(
+  x = fit$draws(variables = c("b", "sigma"))
+)
+```
+
+## 5.3 Binomial Logistic Regression
+
+```{r}
+df <- read_csv("https://raw.githubusercontent.com/MatsuuraKentaro/Bayesian_Statistical_Modeling_with_Stan_R_and_Python/refs/heads/master/chap05/input/data-shopping-2.csv") |> 
+  mutate(
+    proportion = Y/M #proportion of purchasing by N of visit
+  )
+```
+### 5.3.3 Imagine Data Generating Mechanisms 
+
+proportion can't be negative and can't be above 1. In this case, need to transform the linear combination of variables reflecting this range. One of the options is to use `inv_logit`
+Also, the noise should b3e discrete than continuous because proportion is essentially discrete variable (e.g., how many times I purchased for 10 visits). 
+
+### 5.3.4 Describe Model Formula
+
+$$
+\begin{aligned}
+q[n] = inv_logit(b_1 + b_2Sex[n] + b_3Income[n])  \\
+Y[n] \sim Binomial(M[n], q[n]) 
+\end{aligned}
+$$
+`M[n]` represents the total number of visit for each customer. `n` represents the index of each customer. `q[n]` represents probability of purchasing. Thus, here we model the number of purchasing in a sequence of independent visits.  
+
+### 5.3.5 Implement the model 
+```{stan}
+#| eval: false
+#| output.var: "model"
+
+data {
+  int N;
+  vector<lower=0, upper=1>[N] Sex;
+  vector<lower=0>[N] Income;
+  array[N] int<lower=0> M;
+  array[N] int<lower=0> Y;
+  
+}
+
+parameters { 
+  vector[3] real b;
+}
+
+transformed parameters {
+  vector[N] q = inv_logit(b[1] + b[2]*Sex[1:N] + b[3]*Income[1:N]);
+}
+
+model {
+  Y[1:N] ~ binomial(M[1:N], q[1:N]); //M[n] is an observed variable 
+}
+
+generated quantities {
+  array[N] int yp = binomial_rng(M[1:N], q[1:N]);
+}
+```
+
+In stan, vector can only store real numbers. Thus, for integers, need to use array 
+
+```{r}
+model_5.4 <- cmdstan_model("model/model5-4.stan")
+```
+
+```{r}
+stan_data <- list(
+  N = nrow(df),
+  Sex = df$Sex,
+  Income = df$Income,
+  M = df$M,
+  Y = df$Y
+)
+```
+
+```{r}
+fit <- model_5.4$sample(
+  data = stan_data,
+  seed = 123,
+  refresh = 1000,
+  chains = 4,
+  parallel_chains = 4
+)
+```
+
+```{r}
+fit$summary()
+
+fit$draws(
+  variables ="b"
+  ) |> 
+  model_parameters(exponentiate = TRUE) #get odds-ratio
+```
+
+```{r}
+yrep <- fit$draws(
+  variables = "yp",
+  format = "draws_matrix"
+)
+
+ppc_dens_overlay(
+  y = stan_data$Y,
+  yrep = yrep[1:50, ]
+)
+
+ppc_intervals(
+  y = stan_data$Y,
+  yrep = yrep, 
+  x = stan_data$Y
+) + 
+  xlab("Observed")
+
+trace <- mcmc_trace(fit$draws(variables = "b"))
+pairs <- mcmc_pairs(fit$draws(variables = "b"))
+
+trace | pairs
+```
+
+### 5.4 Logistic Regression
+
+```{r}
+df <- read_csv("https://raw.githubusercontent.com/MatsuuraKentaro/Bayesian_Statistical_Modeling_with_Stan_R_and_Python/refs/heads/master/chap05/input/data-shopping-3.csv")
+```
+
+### 5.4.1 Set up Purposes
+How Sex, Income, Discount can predict Y and how much each of them contributes to the purchase probability. 
+
+### 5.4.2 Check Data Distribution 
+
+When variables are binary, bar plot filled with explanatory variable is more useful
+```{r}
+ggplot(df |> mutate(Y = factor(Y), Discount = factor(Discount)), 
+       aes(x = Y, fill = Discount)) + 
+  geom_bar()
+
+ggplot(df |> mutate(Y = factor(Y), Sex = factor(Sex)), 
+       aes(x = Y, fill = Sex)) + 
+  geom_bar()
+
+```
+
+### 5.4.3 Imagine Data Generating Mechanisms
+
+Binomial distribution is a probability distribution for a series of event (count) given a fixed probability for each event happened. Bernoulli distribution is for a single event. When n = 1 in Binomial distribution, it becomes Bernoulli distribution. Here, the response variable is a single event (yes or no), we can use Bernoulli distribution. 
+
+### 5.4.4 Describe Model Formula
+
+$$
+\begin{aligned}
+& q[v] = invlogit(b_1 + b_2Sex[v] + b_3Income[v] + b_4Discount[v] ) && v = 1,...,V \\
+& Y[v] \sim Bernoulli(q[v]) && v = 1,...,V
+\end{aligned}
+$$
+
+Here, we indexed by v not n because this model is for each visit. Also, in this model, we didn't account for the repeated measure of the data (i.e., each individual has multiple observations thus each observation is not independent). This can be addressed using hierarchical model later. 
+
+### 5.4.5 Implement Models
+
+```{r}
+stan_data <- list(
+  V = nrow(df),
+  Sex = df$Sex,
+  Income = df$Income,
+  Discount = df$Discount,
+  Y = df$Y
+)
+```
+
+
+```{stan}
+#| eval: false
+#| output.var: "model"
+
+data {
+  int V;
+  vector<lower=0, upper=1>[V] Sex;
+  vector<lower=0>[V] Income;
+  vector<lower=0, upper=1>[V] Discount;
+  array[V] int <lower=0, upper=1> Y;
+}
+
+parameters {
+  vector[4] b;
+}
+
+transformed parameters {
+  vector[V] q = inv_logit(
+  b[1] + b[2]*Sex[1:V] + b[3]*Income[1:V] + b[4]*Discount[1:V]
+  );
+}
+
+model {
+  Y[1:V] ~ bernoulli(q[1:V]);
+}
+
+generated quantities {
+  array[V] int yp = bernoulli_rng(q[1:V]);
+}
+
+```
+
+If we are not interested in probability of each visit, then we can write as below
+
+```{stan}
+#| eval: false
+#| output.var: "model"
+
+data {
+  int V;
+  vector<lower=0, upper=1>[V] Sex;
+  vector<lower=0>[V] Income;
+  vector<lower=0, upper=1>[V] Discount;
+  array[V] int <lower=0, upper=1> Y;
+}
+
+parameters {
+  vector[4] b;
+}
+
+model {
+  Y[1:V] ~ bernoulli_logit(
+    b[1] + b[2]*Sex[1:V] + b[3]*Income[1:V] + b[4]*Discount[1:V]
+    );
+}
+
+generated quantities {
+  array[V] int yp = bernoulli_logit_rng(
+    b[1] + b[2]*Sex[1:V] + b[3]*Income[1:V] + b[4]*Discount[1:V]
+    );
+}
+
+```
+
+```{r}
+model5.5 <- cmdstan_model("model/model5-5.stan")
+```
+
+```{r}
+fit_5.5 <- model5.5$sample(
+  data = stan_data,
+  seed = 123,
+  parallel_chains = 4,
+  refresh = 1000
+)
+```
+
+```{r}
+fit_5.5$summary()
+```
+
+```{r}
+fit_5.5$draws(
+  variables = "b"
+  ) |> 
+  model_parameters(exponentiate = TRUE)
+```
+
+```{r}
+fit_5.5$draws(
+  variables = "b"
+  ) |> mcmc_trace()
+```
+
+```{r}
+yrep <- fit_5.5$draws(
+  variables = "yp",
+  format = "draws_matrix"
+)[sample(nrow(df), 50), ]
+
+ppc_dens_overlay( #check if data fits into Bernoulli distribution  
+  y = stan_data$Y,
+  yrep = yrep
+)
+
+ppc_bars( #for discrete response variable, ppc_bars is the right tool for pp check 
+  y = stan_data$Y,
+  yrep = yrep
+) + 
+  scale_x_continuous(
+    breaks = c(0, 1), 
+    labels = c("No", "Yes")
+  )
+
+
+```
+
+ROC curve - without uncertainty
+
+```{r}
+prob_est <- fit_5.5$summary(
+  variables = "q"
+) |> 
+  select(median) |> 
+  unlist()
+
+df_pred <- df |> 
+  mutate(
+    prob = prob_est,
+    observed = factor(Y, levels = c("1", "0"))
+  )
+
+roc_data <- df_pred |> 
+  yardstick::roc_curve(truth = observed, prob)
+
+autoplot(roc_data)
+```
+
+### 5.5 Poisson Regression
+
+Assumption: time intervals from an event happened to the next event happened are independently generated from an exponential distribution. In other words, timing of visit A does not impact on the next visit. Also, it assumes that mean and the variance are equal.
+
+### 5.5.2 Describe Model Formula
+
+$$
+\begin{aligned}
+&\log\lambda[n] = b_1 + b_2Sex[n] + b_3Income[n] \\
+&\lambda[n] = \text{exp}(b_1 + b_2Sex[n] + b_3Income[n]) && n = 1,...,N \\
+&M[n] \sim \text{Poission}(\lambda[n]) && n = 1,...,N
+\end{aligned}
+$$
+
+### 5.5.3 Implement the Model
+
+```{stan}
+#| eval: false
+#| output.var: "model"
+
+data {
+  int N;
+  vector<lower=0,upper=1>[N] Sex;
+  vector<lower=0>[N] Income;
+  array[N] int<lower=0> M;
+}
+
+parameters {
+  vector[3] b;
+}
+
+transformed parameters {
+  vector[N] log_lambda = (b[1] + b[2]*Sex[1:N] + b[3]*Income[1:N]);
+}
+
+model {
+  M[1:N] ~ poisson_log(log_lambda[1:N]); //use log link function to estimate lambda then we don't have to calculate exp(eta)
+}
+
+generated quantities {
+  array[N] int mp = poisson_log_rng(log_lambda[1:N]);
+}
+
+```
+
+
+```{r}
+df <- read_csv("https://raw.githubusercontent.com/MatsuuraKentaro/Bayesian_Statistical_Modeling_with_Stan_R_and_Python/refs/heads/master/chap05/input/data-shopping-2.csv")
+
+stan_data <- list(
+  N = nrow(df),
+  Sex = df$Sex,
+  Income = df$Income,
+  M = df$M
+)
+```
+
+```{r}
+model5.6 <- cmdstan_model("model/model5-6.stan")
+```
+
+```{r}
+fit_5.6 <- model5.6$sample(
+  data = stan_data,
+  seed = 123,
+  refresh = 1000
+)
+```
+
+```{r}
+fit_5.6$summary()
+
+mrep <- fit_5.6$draws("mp", format = "draws_matrix")
+
+ppc_dens_overlay(
+  y = stan_data$M,
+  yrep = mrep[sample(nrow(df), 50), ]
+)
+
+ppc_bars(
+  y = stan_data$M,
+  yrep = mrep
+)
+```
+
+### 5.6 Expression Using Matrix option 
+```{r}
+df <- read_csv("https://raw.githubusercontent.com/MatsuuraKentaro/Bayesian_Statistical_Modeling_with_Stan_R_and_Python/refs/heads/master/chap05/input/data-shopping-4.csv")
+```
+
+Model Formula using Matrix 
+
+$$
+\begin{aligned}
+\mu[n] = (X\overrightarrow{b})[n] && n = 1,...,N \\
+Y[n] \sim N(\mu[n], \sigma) && n=1,...,N
+
+\end{aligned}
+$$
+```{stan}
+#| eval: false
+#| output.var: "model"
+
+data{
+  int N;
+  int D;
+  matrix[N,D] X;
+  vector[N] Y;
+}
+
+parameters {
+  vector[D] b;
+  real<lower=0> sigma;
+}
+
+transformed parameters {
+  vector[N] mu = X*b;
+}
+
+model {
+Y[1:N] ~ normal(mu[1:N], sigma);
+}
+
+```
+
+```{r}
+X_mat <- df |> 
+  select(Sex, Income, X3, X4) |> 
+  as.matrix()
+
+stan_data <- list(
+  N = nrow(df),
+  D = ncol(X_mat),
+  X = X_mat,
+  Y = df$Y
+)
+
+model_5.7 <- cmdstan_model("model/model5-7.stan")
+
+fit_5.7 <- model_5.7$sample(
+  data = stan_data,
+  seed = 123,
+  refresh = 1000
+)
+```
+```{r}
+fit_5.7$summary()
 ```
 
