@@ -1,0 +1,80 @@
+---
+title: "Chapter 6"
+format: 
+  html:
+    toc: true
+    embed-resources: true
+---
+
+```{r}
+#| warning: false
+#| message: false
+
+library(tidyverse)
+library(cmdstanr)
+library(tidybayes)
+library(bayesplot)
+library(ggthemes)
+library(patchwork)
+library(easystats)
+```
+
+## Multivariate Normal Distribution
+
+```{r}
+df <- MASS::mvrnorm(n = 32, mu = c(9.2, 2.6), Sigma = matrix(c(0.42, -0.30, -0.30, 0.29), ncol = 2)) |> 
+  as.data.frame() |> 
+  rename(Y1 = V1, Y2 = V2)
+```
+
+```{stan}
+#| output.var: "model6-5.stan"
+#| eval: false
+
+data {
+  int<lower=0> N;
+  int D;
+  array[N] vector[D] Y;
+}
+
+
+parameters {
+  vector[D] mu_vec;
+  cov_matrix[D] cov;
+}
+
+model {
+  Y[1:N] ~ multi_normal(mu_vec, cov);
+}
+
+generated quantities { //can calculate correlation within Stan, much faster  
+  vector[D] sigma;
+  for(d in 1:D) {
+    sigma[d] = sqrt(cov[d,d]);
+  }
+  
+  real rho = cov[1,2]/(sigma[1]*sigma[2]);
+}
+
+
+```
+
+
+```{r}
+stan_data <- list(
+  N = nrow(df),
+  D = ncol(df),
+  Y = as.matrix(df)
+)
+```
+
+```{r}
+model_6.5 <- cmdstan_model("model/model6-5.stan")
+
+fit_6.5 <- model_6.5$sample(data = stan_data, refresh = 1000, seed = 123)
+```
+
+```{r}
+fit_6.5$summary()
+```
+
