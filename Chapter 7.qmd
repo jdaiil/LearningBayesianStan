@@ -1,0 +1,309 @@
+---
+title: "Chapter 7"
+format: html
+editor: visual
+---
+
+```{r}
+#| warning: false
+#| message: false
+
+library(tidyverse)
+library(cmdstanr)
+library(tidybayes)
+library(bayesplot)
+library(ggthemes)
+library(patchwork)
+library(easystats)
+```
+
+## 7.1 log transforamtion 
+Import the data
+```{r}
+df <- read_csv("https://raw.githubusercontent.com/MatsuuraKentaro/Bayesian_Statistical_Modeling_with_Stan_R_and_Python/refs/heads/master/chap07/input/data-rental.csv")
+
+```
+
+Figure 1
+```{r}
+fig_left <- ggplot(df, aes(x = Area, y = Y)) + 
+  geom_point()
+
+fig_right <- ggplot(df, aes(x = log(Area, base = 10), y = log(Y, base = 10))) + 
+  geom_point()
+
+fig_left | fig_right
+```
+
+Model Formula 7.1
+$$
+\begin{aligned}
+
+Y[n] \sim N(\mu[n], \sigma) && n = 1,...,N \\
+
+\mu[n] = b_{1} + b_{2}Area[n] && n = 1,...N 
+
+\end{aligned}
+$$
+
+Stan model for Formula 7.1
+```{stan}
+#| eval: false
+#| output.var: "model"
+
+data {
+  int<lower=0> N;
+  vector[N] Y;
+  vector[N] X;
+  int Np;
+  vector[Np] Xp;
+}
+
+parameters {
+  vector[2] b; //b[1] intercept, b[2] slope
+  real<lower=0> sigma; 
+}
+
+transformed parameters{
+  vector[N] mu = b[1] + b[2]*X;
+}
+
+model {
+  Y ~ normal(mu, sigma);
+}
+
+generated quantities{
+  array[N] real yp_n = normal_rng(mu, sigma);
+  array[N] real yp_np = normal_rng(b[1] + b[2]*Xp, sigma);
+}
+
+```
+
+```{r}
+Np <- 50
+Xp <- seq(from = 10, to = 120, length = Np)
+
+stan_data7.1 <- list(
+  N = nrow(df),
+  Y = df$Y,
+  X = df$Area,
+  Np = Np,
+  Xp = Xp
+)
+
+model_7.1 <- cmdstan_model(stan_file = "./model/model7-1.stan")
+
+fit_7.1 <- model_7.1$sample(
+  data = stan_data7.1,
+  seed = 1125,
+  refresh = 1000
+)
+
+fit_7.1$summary()
+```
+
+Model Formula 7.2 
+$$
+\begin{aligned}
+
+log_{10}Y[n] \sim N(\mu[n], \sigma) && n = 1,...,N \\
+\mu[n] = b_{1} + b_{2}log_{10}Area[n] && n = 1,...,N
+
+\end{aligned}
+$$
+
+```{r}
+Np <- 50
+Xp <- seq(10, 120, length = Np)
+
+stan_data7.1log <- list(
+  N = nrow(df),
+  Y = log(df$Y, base = 10),
+  X = log(df$Area, base = 10),
+  Np = Np,
+  Xp = log(Xp, base = 10)
+)
+
+model_7.1log <- cmdstan_model(stan_file = "./model/model7-1.stan")
+
+fit_7.1log <- model_7.1log$sample(
+  data = stan_data7.1log,
+  seed = 1125,
+  refresh = 1000
+)
+
+fit_7.1log$summary()
+```
+
+PP check 
+
+Non-transformed model - not a good fit 
+```{r}
+yrep <- fit_7.1$draws(variables = "yp_n", format = "draws_matrix")
+
+indice <- sample(nrow(yrep), 100)
+yrep_small <- yrep[indice, ]
+
+ppc_dens_overlay(
+  y = stan_data7.1$Y,
+  yrep = yrep_small
+  )
+
+ppc_error_hist(
+  y = stan_data7.1$Y,
+  yrep = yrep_small[1:9, ]
+)
+
+ppc_intervals(
+  y = stan_data7.1$Y,
+  yrep = yrep, 
+  x = stan_data7.1$Y
+)
+```
+
+log transformed - better fit. 
+```{r}
+yrep <- fit_7.1log$draws(variables = "yp_n", format = "draws_matrix")
+yrep_back <- apply(yrep, 2, function(x) 10^x)
+
+indice <- sample(nrow(yrep), 100)
+yrep_small <- yrep_back[indice, ]
+
+ppc_dens_overlay(
+  y = 10^stan_data7.1log$Y,
+  yrep = yrep_small
+  )
+
+ppc_error_hist(
+  y = 10^stan_data7.1log$Y,
+  yrep = yrep_small[1:9, ]
+)
+
+ppc_intervals(
+  y = 10^stan_data7.1log$Y,
+  yrep = yrep_back, 
+  x = 10^stan_data7.1log$Y
+)
+```
+### 7.2 non-linear model 
+
+### 7.2.1 Exponential Function 
+
+Import the data
+```{r}
+df <- read_csv("https://raw.githubusercontent.com/MatsuuraKentaro/Bayesian_Statistical_Modeling_with_Stan_R_and_Python/refs/heads/master/chap07/input/data-conc.csv")
+```
+
+
+Model Formula 7.3
+$$
+\begin{aligned}
+Y[t] \sim N(a \{1-exp(-bX[t\}, \sigma) && t = 1,...,T
+\end{aligned}
+$$
+
+```{stan}
+#| eval: false
+#| output.var: "model"
+
+data {
+  int T;
+  vector[T] X;
+  vector[T] Y;
+  int Tp;
+  vector[Tp] Xp;
+}
+
+parameters {
+  real<lower=0, upper=100> a;
+  real<lower=0, upper=5> b;
+  real<lower=0> sigma;
+}
+
+model {
+  Y ~ normal(a*(1-exp(-b*X)), sigma);
+}
+
+generated quantities {
+  array[T] real yrep = normal_rng(a*(1-exp(-b*X)), sigma); //for pp_check 
+  array[Tp] real yp = normal_rng(a*(1-exp(-b*Xp)), sigma); //for prediction 
+}
+
+```
+
+```{r}
+Tp <- 60
+Xp <- seq(from=0, to=24, length=Tp)
+
+stan_data7.3 <- list(
+  T = nrow(df),
+  X = df$Time,
+  Y = df$Y,
+  Tp = Tp,
+  Xp = Xp
+)
+```
+
+```{r}
+model_7.3 <- cmdstan_model("./model/model7-3.stan")
+
+fit_7.3 <- model_7.3$sample(
+  data =stan_data7.3,
+  seed = 123,
+  parallel_chains = 4,
+  refresh = 1000
+)
+
+fit_7.3$summary()
+```
+
+pp check
+```{r}
+yrep_matrix <- fit_7.3$draws(variables = "yrep", format = "draws_matrix")
+
+yrep_small <- yrep_matrix[sample(nrow(yrep_matrix), 100), ]
+
+ppc_dens_overlay(
+  y = stan_data7.3$Y,
+  yrep = yrep_small
+)
+```
+
+
+
+Figure 7.5
+```{r}
+fig7.5_left <- ggplot(df, aes(x = Time, y = Y)) +
+  geom_point() +
+  geom_line() +
+  coord_cartesian(
+    ylim = c(0,15)
+  )
+
+yp_summary <- fit_7.3$draws(variables = "yp", format = "draws_df") |> 
+  spread_draws(yp[i]) |> 
+  summarise(
+    median = median(yp),
+    lower = quantile(yp, 0.025),
+    upper = quantile(yp, 0.975)
+  ) |> 
+  mutate(
+    time = Xp
+  )
+
+fig7.5_right <- ggplot(yp_summary, aes(x = time, y = median)) + 
+  geom_line(color = "blue", size = 1) + 
+  geom_ribbon(aes(ymin = lower, ymax = upper), fill = "darkgrey", alpha = 0.7) + 
+  geom_point(data = df, aes(x = Time, y = Y), color = "black") + 
+  labs(
+    x = "time",
+    y = "predicted value of y"
+  ) + 
+  coord_cartesian(
+    ylim = c(0,15)
+  )
+
+fig7.5_left | fig7.5_right
+```
+
+### Emax Function 

@@ -299,7 +299,6 @@ ppc_error_hist_grouped(
   yrep[1:4, ], 
   group = factor(stan_data$Sex, labels = c("Female", "Male"))
   )
-
 ```
 
 ### 5.2.3 Scatterplot Matrix of MCMC Sample
