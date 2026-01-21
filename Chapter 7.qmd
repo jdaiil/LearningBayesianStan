@@ -185,7 +185,7 @@ ppc_intervals(
   x = 10^stan_data7.1log$Y
 )
 ```
-### 7.2 non-linear model 
+## 7.2 non-linear model 
 
 ### 7.2.1 Exponential Function 
 
@@ -306,4 +306,159 @@ fig7.5_right <- ggplot(yp_summary, aes(x = time, y = median)) +
 fig7.5_left | fig7.5_right
 ```
 
-### Emax Function 
+## 7.3 Interaction 
+
+```{r}
+df <- read_csv("https://raw.githubusercontent.com/MatsuuraKentaro/Bayesian_Statistical_Modeling_with_Stan_R_and_Python/refs/heads/master/chap05/input/data-shopping-2.csv")
+```
+Formula 7.5
+$$
+\begin{aligned}
+
+\mu[n] = b_{1} + b_{2}Sex[n] + (b_{3} + b_{4}Sex[n])Income[n] && n = 1,...,N \\
+Y[n] \sim N(\mu[n], \sigma) && n = 1,...,N
+
+\end{aligned}
+$$
+
+```{stan}
+#| eval: false
+#| output.var: "mystan.stan"
+
+data {
+  int N;
+  vector[N] Sex;
+  vector[N] Income
+  vector[T] Y;
+}
+
+parameters {
+  vector[4] b; //b1~b4
+  real<lower=0> sigma;
+}
+
+transformed parameters {
+  mu = b1 + b2*Sex + b3*Income + b4*Sex*Income
+}
+
+model {
+  Y ~ normal(mu, sigma);
+}
+
+generated quantities {
+  array[N] real yrep = normal_rng(mu, sigma); //for pp_check 
+}
+```
+
+```{r}
+stan_data7_int <- list(
+  N = nrow(df),
+  Sex = df$Sex,
+  Income = df$Income,
+  Y = df$Y
+)
+
+model7_int <- cmdstan_model("./model/model7-interaction.stan") 
+
+fit_7int <- model7_int$sample(
+  data = stan_data7_int,
+  seed = 123,
+  parallel_chains = 4,
+  refresh = 1000
+)
+
+fit_7int$summary()
+```
+
+## 7.4 Multicollinearity 
+
+## 7.5 Model Misspecification 
+
+## 7.6 Variable Selection 
+
+## 7.7 Censoring 
+
+```{r}
+df <- read_csv("https://raw.githubusercontent.com/MatsuuraKentaro/Bayesian_Statistical_Modeling_with_Stan_R_and_Python/refs/heads/master/chap07/input/data-protein.csv")
+```
+
+Model Formula 7.6
+$$
+\begin{aligned}
+\text{In the case of measurements without censoring}: \\
+
+Y[n] \sim N(\mu, \sigma) && n = 1,...,N_{obs} \\
+    
+\text{In the case of measurments with censoring}: \\
+
+y[n] \sim N(\mu, \sigma) \text{and} y[n] < L && n = 1,...,N_{cens} 
+\end{aligned}
+$$
+
+Model 7-6 
+
+use cumulative density distribution to sum probability density below L 
+```{stan}
+#| eval: false
+#| output.var : "model7-6.stan"
+
+data {
+  int N_obs;
+  int N_cens;
+  vector[N_obs] Y_obs;
+  real L;
+}
+
+parameters {
+  real mu;
+  real<lower=0> sigma;
+}
+
+model {
+  Y_obs[1:N_obs] ~ normal(mu,sigma);
+  target += N_cens*normal_lcdf(L|mu,sigma);
+}
+
+```
+
+```{r}
+idx <- str_which(df$Y, "<") #censored data index
+Y_obs <- as.numeric(df[-idx, ]$Y)
+L <- as.numeric(str_remove(df[idx,]$Y,"<")[1])
+
+stan_data7.6 <- list(
+  N_obs = length(Y_obs), #number of observed Y (not censored)
+  N_cens = length(idx), #number of censored Y
+  Y_obs = Y_obs,
+  L = L
+)
+
+model_7.6 <-cmdstan_model("./model/model7-6.stan")
+
+fit_7.6 <- model_7.6$sample(
+  data = stan_data7.6,
+  seed = 123,
+  parallel_chains = 4,
+  refresh = 1000
+)
+
+fit_7.6$summary()
+```
+
+## 7.8 Outlier 
+```{r}
+df <- read_csv("https://raw.githubusercontent.com/MatsuuraKentaro/Bayesian_Statistical_Modeling_with_Stan_R_and_Python/refs/heads/master/chap07/input/data-outlier.csv")
+```
+
+
+how to address outlier in modeling 
+
+1.  Use Cauchy distribution or Student's t distribution 
+
+$$
+Y[n] \sim Cauchy(a+bX[n], \sigma)
+$$
+
+Cauchy distribution has thicker tail, meaning that outlier is covered by greater noise. 
+
+2.  Zero-inflated model 

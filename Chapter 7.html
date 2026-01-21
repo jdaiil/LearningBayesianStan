@@ -453,9 +453,9 @@ Total execution time: 1.5 seconds.</code></pre>
 </div>
 </div>
 </div>
-<section id="non-linear-model" class="level3">
-<h3 class="anchored" data-anchor-id="non-linear-model">7.2 non-linear model</h3>
 </section>
+<section id="non-linear-model" class="level2">
+<h2 class="anchored" data-anchor-id="non-linear-model">7.2 non-linear model</h2>
 <section id="exponential-function" class="level3">
 <h3 class="anchored" data-anchor-id="exponential-function">7.2.1 Exponential Function</h3>
 <p>Import the data</p>
@@ -530,27 +530,27 @@ Y[t] \sim N(a \{1-exp(-bX[t\}, \sigma) &amp;&amp; t = 1,...,T
 Chain 1 Iteration:    1 / 2000 [  0%]  (Warmup) 
 Chain 1 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
 Chain 1 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
-Chain 1 Iteration: 2000 / 2000 [100%]  (Sampling) 
 Chain 2 Iteration:    1 / 2000 [  0%]  (Warmup) 
 Chain 2 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
 Chain 2 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
-Chain 2 Iteration: 2000 / 2000 [100%]  (Sampling) 
 Chain 3 Iteration:    1 / 2000 [  0%]  (Warmup) 
 Chain 3 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
 Chain 3 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
 Chain 4 Iteration:    1 / 2000 [  0%]  (Warmup) 
-Chain 4 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
-Chain 4 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
+Chain 1 Iteration: 2000 / 2000 [100%]  (Sampling) 
 Chain 1 finished in 0.1 seconds.
+Chain 2 Iteration: 2000 / 2000 [100%]  (Sampling) 
 Chain 2 finished in 0.1 seconds.
 Chain 3 Iteration: 2000 / 2000 [100%]  (Sampling) 
 Chain 3 finished in 0.1 seconds.
+Chain 4 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
+Chain 4 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
 Chain 4 Iteration: 2000 / 2000 [100%]  (Sampling) 
 Chain 4 finished in 0.1 seconds.
 
 All 4 chains finished successfully.
 Mean chain execution time: 0.1 seconds.
-Total execution time: 0.3 seconds.</code></pre>
+Total execution time: 0.4 seconds.</code></pre>
 </div>
 <div class="sourceCode cell-code" id="cb36"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb36-1"><a href="#cb36-1" aria-hidden="true" tabindex="-1"></a>fit_7<span class="fl">.3</span><span class="sc">$</span><span class="fu">summary</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
 <div class="cell-output cell-output-stdout">
@@ -633,9 +633,262 @@ Total execution time: 0.3 seconds.</code></pre>
 </div>
 </div>
 </section>
-<section id="emax-function" class="level3">
-<h3 class="anchored" data-anchor-id="emax-function">Emax Function</h3>
 </section>
+<section id="interaction" class="level2">
+<h2 class="anchored" data-anchor-id="interaction">7.3 Interaction</h2>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb42"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb42-1"><a href="#cb42-1" aria-hidden="true" tabindex="-1"></a>df <span class="ot">&lt;-</span> <span class="fu">read_csv</span>(<span class="st">"https://raw.githubusercontent.com/MatsuuraKentaro/Bayesian_Statistical_Modeling_with_Stan_R_and_Python/refs/heads/master/chap05/input/data-shopping-2.csv"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Rows: 50 Columns: 5
+── Column specification ────────────────────────────────────────────────────────
+Delimiter: ","
+dbl (5): PersonID, Sex, Income, M, Y
+
+ℹ Use `spec()` to retrieve the full column specification for this data.
+ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.</code></pre>
+</div>
+</div>
+Formula 7.5 $$
+<span class="math display">\[\begin{aligned}
+
+\mu[n] = b_{1} + b_{2}Sex[n] + (b_{3} + b_{4}Sex[n])Income[n] &amp;&amp; n = 1,...,N \\
+Y[n] \sim N(\mu[n], \sigma) &amp;&amp; n = 1,...,N
+
+\end{aligned}\]</span>
+<p>$$</p>
+<div class="cell" data-output.var="mystan.stan">
+<div class="sourceCode cell-code" id="cb44"><pre class="sourceCode stan code-with-copy"><code class="sourceCode stan"><span id="cb44-1"><a href="#cb44-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> {</span>
+<span id="cb44-2"><a href="#cb44-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">int</span> N;</span>
+<span id="cb44-3"><a href="#cb44-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">vector</span>[N] Sex;</span>
+<span id="cb44-4"><a href="#cb44-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">vector</span>[N] Income</span>
+<span id="cb44-5"><a href="#cb44-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">vector</span>[T] Y;</span>
+<span id="cb44-6"><a href="#cb44-6" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb44-7"><a href="#cb44-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb44-8"><a href="#cb44-8" aria-hidden="true" tabindex="-1"></a><span class="kw">parameters</span> {</span>
+<span id="cb44-9"><a href="#cb44-9" aria-hidden="true" tabindex="-1"></a>  <span class="dt">vector</span>[<span class="dv">4</span>] b; <span class="co">//b1~b4</span></span>
+<span id="cb44-10"><a href="#cb44-10" aria-hidden="true" tabindex="-1"></a>  <span class="dt">real</span>&lt;<span class="kw">lower</span>=<span class="dv">0</span>&gt; sigma;</span>
+<span id="cb44-11"><a href="#cb44-11" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb44-12"><a href="#cb44-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb44-13"><a href="#cb44-13" aria-hidden="true" tabindex="-1"></a><span class="kw">transformed parameters</span> {</span>
+<span id="cb44-14"><a href="#cb44-14" aria-hidden="true" tabindex="-1"></a>  mu = b1 + b2*Sex + b3*Income + b4*Sex*Income</span>
+<span id="cb44-15"><a href="#cb44-15" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb44-16"><a href="#cb44-16" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb44-17"><a href="#cb44-17" aria-hidden="true" tabindex="-1"></a><span class="kw">model</span> {</span>
+<span id="cb44-18"><a href="#cb44-18" aria-hidden="true" tabindex="-1"></a>  Y ~ normal(mu, sigma);</span>
+<span id="cb44-19"><a href="#cb44-19" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb44-20"><a href="#cb44-20" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb44-21"><a href="#cb44-21" aria-hidden="true" tabindex="-1"></a><span class="kw">generated quantities</span> {</span>
+<span id="cb44-22"><a href="#cb44-22" aria-hidden="true" tabindex="-1"></a>  <span class="dt">array</span>[N] <span class="dt">real</span> yrep = normal_rng(mu, sigma); <span class="co">//for pp_check </span></span>
+<span id="cb44-23"><a href="#cb44-23" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb45"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb45-1"><a href="#cb45-1" aria-hidden="true" tabindex="-1"></a>stan_data7_int <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb45-2"><a href="#cb45-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">N =</span> <span class="fu">nrow</span>(df),</span>
+<span id="cb45-3"><a href="#cb45-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">Sex =</span> df<span class="sc">$</span>Sex,</span>
+<span id="cb45-4"><a href="#cb45-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">Income =</span> df<span class="sc">$</span>Income,</span>
+<span id="cb45-5"><a href="#cb45-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">Y =</span> df<span class="sc">$</span>Y</span>
+<span id="cb45-6"><a href="#cb45-6" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb45-7"><a href="#cb45-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb45-8"><a href="#cb45-8" aria-hidden="true" tabindex="-1"></a>model7_int <span class="ot">&lt;-</span> <span class="fu">cmdstan_model</span>(<span class="st">"./model/model7-interaction.stan"</span>) </span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in readLines(stan_file): incomplete final line found on
+'./model/model7-interaction.stan'</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb47"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb47-1"><a href="#cb47-1" aria-hidden="true" tabindex="-1"></a>fit_7int <span class="ot">&lt;-</span> model7_int<span class="sc">$</span><span class="fu">sample</span>(</span>
+<span id="cb47-2"><a href="#cb47-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> stan_data7_int,</span>
+<span id="cb47-3"><a href="#cb47-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">seed =</span> <span class="dv">123</span>,</span>
+<span id="cb47-4"><a href="#cb47-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">parallel_chains =</span> <span class="dv">4</span>,</span>
+<span id="cb47-5"><a href="#cb47-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">refresh =</span> <span class="dv">1000</span></span>
+<span id="cb47-6"><a href="#cb47-6" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Running MCMC with 4 parallel chains...
+
+Chain 1 Iteration:    1 / 2000 [  0%]  (Warmup) 
+Chain 2 Iteration:    1 / 2000 [  0%]  (Warmup) 
+Chain 3 Iteration:    1 / 2000 [  0%]  (Warmup) 
+Chain 4 Iteration:    1 / 2000 [  0%]  (Warmup) 
+Chain 1 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
+Chain 1 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
+Chain 1 Iteration: 2000 / 2000 [100%]  (Sampling) 
+Chain 2 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
+Chain 2 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
+Chain 3 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
+Chain 3 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
+Chain 4 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
+Chain 4 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
+Chain 1 finished in 0.3 seconds.
+Chain 2 Iteration: 2000 / 2000 [100%]  (Sampling) 
+Chain 3 Iteration: 2000 / 2000 [100%]  (Sampling) 
+Chain 4 Iteration: 2000 / 2000 [100%]  (Sampling) 
+Chain 2 finished in 0.3 seconds.
+Chain 3 finished in 0.3 seconds.
+Chain 4 finished in 0.3 seconds.
+
+All 4 chains finished successfully.
+Mean chain execution time: 0.3 seconds.
+Total execution time: 0.5 seconds.</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb49"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb49-1"><a href="#cb49-1" aria-hidden="true" tabindex="-1"></a>fit_7int<span class="sc">$</span><span class="fu">summary</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 106 × 10
+   variable     mean   median     sd    mad        q5      q95  rhat ess_bulk
+   &lt;chr&gt;       &lt;dbl&gt;    &lt;dbl&gt;  &lt;dbl&gt;  &lt;dbl&gt;     &lt;dbl&gt;    &lt;dbl&gt; &lt;dbl&gt;    &lt;dbl&gt;
+ 1 lp__     -67.8    -67.5    1.70   1.54   -71.0     -65.7     1.00    1427.
+ 2 b[1]       0.0135   0.0657 1.99   2.01    -3.34      3.29    1.00     839.
+ 3 b[2]       3.51     3.46   2.76   2.76    -0.836     8.18    1.00     883.
+ 4 b[3]       0.0425   0.0418 0.0289 0.0295  -0.00419   0.0906  1.00     836.
+ 5 b[4]      -0.0289  -0.0285 0.0400 0.0403  -0.0947    0.0347  1.00     884.
+ 6 sigma      2.44     2.42   0.273  0.255    2.04      2.91    1.00    1971.
+ 7 mu[1]      3.63     3.63   0.725  0.715    2.44      4.83    1.00    1566.
+ 8 mu[2]      4.40     4.40   0.493  0.485    3.61      5.22    1.00    4261.
+ 9 mu[3]      4.16     4.16   1.02   1.02     2.47      5.87    1.00    1137.
+10 mu[4]      4.51     4.51   0.506  0.497    3.68      5.35    1.00    4389.
+# ℹ 96 more rows
+# ℹ 1 more variable: ess_tail &lt;dbl&gt;</code></pre>
+</div>
+</div>
+</section>
+<section id="multicollinearity" class="level2">
+<h2 class="anchored" data-anchor-id="multicollinearity">7.4 Multicollinearity</h2>
+</section>
+<section id="model-misspecification" class="level2">
+<h2 class="anchored" data-anchor-id="model-misspecification">7.5 Model Misspecification</h2>
+</section>
+<section id="variable-selection" class="level2">
+<h2 class="anchored" data-anchor-id="variable-selection">7.6 Variable Selection</h2>
+</section>
+<section id="censoring" class="level2">
+<h2 class="anchored" data-anchor-id="censoring">7.7 Censoring</h2>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb51"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb51-1"><a href="#cb51-1" aria-hidden="true" tabindex="-1"></a>df <span class="ot">&lt;-</span> <span class="fu">read_csv</span>(<span class="st">"https://raw.githubusercontent.com/MatsuuraKentaro/Bayesian_Statistical_Modeling_with_Stan_R_and_Python/refs/heads/master/chap07/input/data-protein.csv"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Rows: 6 Columns: 1
+── Column specification ────────────────────────────────────────────────────────
+Delimiter: ","
+chr (1): Y
+
+ℹ Use `spec()` to retrieve the full column specification for this data.
+ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.</code></pre>
+</div>
+</div>
+Model Formula 7.6 $$
+<span class="math display">\[\begin{aligned}
+\text{In the case of measurements without censoring}: \\
+
+Y[n] \sim N(\mu, \sigma) &amp;&amp; n = 1,...,N_{obs} \\
+    
+\text{In the case of measurments with censoring}: \\
+
+y[n] \sim N(\mu, \sigma) \text{and} y[n] &lt; L &amp;&amp; n = 1,...,N_{cens}
+\end{aligned}\]</span>
+<p>$$</p>
+<p>Model 7-6</p>
+<p>use cumulative density distribution to sum probability density below L</p>
+<div class="cell" data-output.var="model7-6.stan">
+<div class="sourceCode cell-code" id="cb53"><pre class="sourceCode stan code-with-copy"><code class="sourceCode stan"><span id="cb53-1"><a href="#cb53-1" aria-hidden="true" tabindex="-1"></a><span class="kw">data</span> {</span>
+<span id="cb53-2"><a href="#cb53-2" aria-hidden="true" tabindex="-1"></a>  <span class="dt">int</span> N_obs;</span>
+<span id="cb53-3"><a href="#cb53-3" aria-hidden="true" tabindex="-1"></a>  <span class="dt">int</span> N_cens;</span>
+<span id="cb53-4"><a href="#cb53-4" aria-hidden="true" tabindex="-1"></a>  <span class="dt">vector</span>[N_obs] Y_obs;</span>
+<span id="cb53-5"><a href="#cb53-5" aria-hidden="true" tabindex="-1"></a>  <span class="dt">real</span> L;</span>
+<span id="cb53-6"><a href="#cb53-6" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb53-7"><a href="#cb53-7" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb53-8"><a href="#cb53-8" aria-hidden="true" tabindex="-1"></a><span class="kw">parameters</span> {</span>
+<span id="cb53-9"><a href="#cb53-9" aria-hidden="true" tabindex="-1"></a>  <span class="dt">real</span> mu;</span>
+<span id="cb53-10"><a href="#cb53-10" aria-hidden="true" tabindex="-1"></a>  <span class="dt">real</span>&lt;<span class="kw">lower</span>=<span class="dv">0</span>&gt; sigma;</span>
+<span id="cb53-11"><a href="#cb53-11" aria-hidden="true" tabindex="-1"></a>}</span>
+<span id="cb53-12"><a href="#cb53-12" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb53-13"><a href="#cb53-13" aria-hidden="true" tabindex="-1"></a><span class="kw">model</span> {</span>
+<span id="cb53-14"><a href="#cb53-14" aria-hidden="true" tabindex="-1"></a>  Y_obs[<span class="dv">1</span>:N_obs] ~ normal(mu,sigma);</span>
+<span id="cb53-15"><a href="#cb53-15" aria-hidden="true" tabindex="-1"></a>  <span class="kw">target +=</span> N_cens*normal_lcdf(L|mu,sigma);</span>
+<span id="cb53-16"><a href="#cb53-16" aria-hidden="true" tabindex="-1"></a>}</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+</div>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb54"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb54-1"><a href="#cb54-1" aria-hidden="true" tabindex="-1"></a>idx <span class="ot">&lt;-</span> <span class="fu">str_which</span>(df<span class="sc">$</span>Y, <span class="st">"&lt;"</span>) <span class="co">#censored data index</span></span>
+<span id="cb54-2"><a href="#cb54-2" aria-hidden="true" tabindex="-1"></a>Y_obs <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(df[<span class="sc">-</span>idx, ]<span class="sc">$</span>Y)</span>
+<span id="cb54-3"><a href="#cb54-3" aria-hidden="true" tabindex="-1"></a>L <span class="ot">&lt;-</span> <span class="fu">as.numeric</span>(<span class="fu">str_remove</span>(df[idx,]<span class="sc">$</span>Y,<span class="st">"&lt;"</span>)[<span class="dv">1</span>])</span>
+<span id="cb54-4"><a href="#cb54-4" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb54-5"><a href="#cb54-5" aria-hidden="true" tabindex="-1"></a>stan_data7<span class="fl">.6</span> <span class="ot">&lt;-</span> <span class="fu">list</span>(</span>
+<span id="cb54-6"><a href="#cb54-6" aria-hidden="true" tabindex="-1"></a>  <span class="at">N_obs =</span> <span class="fu">length</span>(Y_obs), <span class="co">#number of observed Y (not censored)</span></span>
+<span id="cb54-7"><a href="#cb54-7" aria-hidden="true" tabindex="-1"></a>  <span class="at">N_cens =</span> <span class="fu">length</span>(idx), <span class="co">#number of censored Y</span></span>
+<span id="cb54-8"><a href="#cb54-8" aria-hidden="true" tabindex="-1"></a>  <span class="at">Y_obs =</span> Y_obs,</span>
+<span id="cb54-9"><a href="#cb54-9" aria-hidden="true" tabindex="-1"></a>  <span class="at">L =</span> L</span>
+<span id="cb54-10"><a href="#cb54-10" aria-hidden="true" tabindex="-1"></a>)</span>
+<span id="cb54-11"><a href="#cb54-11" aria-hidden="true" tabindex="-1"></a></span>
+<span id="cb54-12"><a href="#cb54-12" aria-hidden="true" tabindex="-1"></a>model_7<span class="fl">.6</span> <span class="ot">&lt;-</span><span class="fu">cmdstan_model</span>(<span class="st">"./model/model7-6.stan"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Warning in readLines(stan_file): incomplete final line found on
+'./model/model7-6.stan'</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb56"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb56-1"><a href="#cb56-1" aria-hidden="true" tabindex="-1"></a>fit_7<span class="fl">.6</span> <span class="ot">&lt;-</span> model_7<span class="fl">.6</span><span class="sc">$</span><span class="fu">sample</span>(</span>
+<span id="cb56-2"><a href="#cb56-2" aria-hidden="true" tabindex="-1"></a>  <span class="at">data =</span> stan_data7<span class="fl">.6</span>,</span>
+<span id="cb56-3"><a href="#cb56-3" aria-hidden="true" tabindex="-1"></a>  <span class="at">seed =</span> <span class="dv">123</span>,</span>
+<span id="cb56-4"><a href="#cb56-4" aria-hidden="true" tabindex="-1"></a>  <span class="at">parallel_chains =</span> <span class="dv">4</span>,</span>
+<span id="cb56-5"><a href="#cb56-5" aria-hidden="true" tabindex="-1"></a>  <span class="at">refresh =</span> <span class="dv">1000</span></span>
+<span id="cb56-6"><a href="#cb56-6" aria-hidden="true" tabindex="-1"></a>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code>Running MCMC with 4 parallel chains...
+
+Chain 1 Iteration:    1 / 2000 [  0%]  (Warmup) 
+Chain 1 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
+Chain 1 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
+Chain 1 Iteration: 2000 / 2000 [100%]  (Sampling) 
+Chain 2 Iteration:    1 / 2000 [  0%]  (Warmup) 
+Chain 2 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
+Chain 2 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
+Chain 2 Iteration: 2000 / 2000 [100%]  (Sampling) 
+Chain 3 Iteration:    1 / 2000 [  0%]  (Warmup) 
+Chain 3 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
+Chain 3 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
+Chain 3 Iteration: 2000 / 2000 [100%]  (Sampling) 
+Chain 4 Iteration:    1 / 2000 [  0%]  (Warmup) 
+Chain 1 finished in 0.0 seconds.
+Chain 2 finished in 0.0 seconds.
+Chain 3 finished in 0.0 seconds.
+Chain 4 Iteration: 1000 / 2000 [ 50%]  (Warmup) 
+Chain 4 Iteration: 1001 / 2000 [ 50%]  (Sampling) 
+Chain 4 Iteration: 2000 / 2000 [100%]  (Sampling) 
+Chain 4 finished in 0.1 seconds.
+
+All 4 chains finished successfully.
+Mean chain execution time: 0.0 seconds.
+Total execution time: 0.4 seconds.</code></pre>
+</div>
+<div class="sourceCode cell-code" id="cb58"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb58-1"><a href="#cb58-1" aria-hidden="true" tabindex="-1"></a>fit_7<span class="fl">.6</span><span class="sc">$</span><span class="fu">summary</span>()</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stdout">
+<pre><code># A tibble: 3 × 10
+  variable  mean median    sd   mad     q5   q95  rhat ess_bulk ess_tail
+  &lt;chr&gt;    &lt;dbl&gt;  &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;  &lt;dbl&gt; &lt;dbl&gt; &lt;dbl&gt;    &lt;dbl&gt;    &lt;dbl&gt;
+1 lp__     -10.3  -9.83  1.47  1.04 -13.1  -8.89  1.01     546.     359.
+2 mu        25.9  27.5  12.6   4.44  13.0  36.0   1.00     805.     544.
+3 sigma     14.8   9.93 19.1   5.75   4.30 36.5   1.01     534.     453.</code></pre>
+</div>
+</div>
+</section>
+<section id="outlier" class="level2">
+<h2 class="anchored" data-anchor-id="outlier">7.8 Outlier</h2>
+<div class="cell">
+<div class="sourceCode cell-code" id="cb60"><pre class="sourceCode r code-with-copy"><code class="sourceCode r"><span id="cb60-1"><a href="#cb60-1" aria-hidden="true" tabindex="-1"></a>df <span class="ot">&lt;-</span> <span class="fu">read_csv</span>(<span class="st">"https://raw.githubusercontent.com/MatsuuraKentaro/Bayesian_Statistical_Modeling_with_Stan_R_and_Python/refs/heads/master/chap07/input/data-outlier.csv"</span>)</span></code><button title="Copy to Clipboard" class="code-copy-button"><i class="bi"></i></button></pre></div>
+<div class="cell-output cell-output-stderr">
+<pre><code>Rows: 10 Columns: 2
+── Column specification ────────────────────────────────────────────────────────
+Delimiter: ","
+dbl (2): X, Y
+
+ℹ Use `spec()` to retrieve the full column specification for this data.
+ℹ Specify the column types or set `show_col_types = FALSE` to quiet this message.</code></pre>
+</div>
+</div>
+<p>how to address outlier in modeling</p>
+<ol type="1">
+<li>Use Cauchy distribution or Student’s t distribution</li>
+</ol>
+<p><span class="math display">\[
+Y[n] \sim Cauchy(a+bX[n], \sigma)
+\]</span></p>
+<p>Cauchy distribution has thicker tail, meaning that outlier is covered by greater noise.</p>
+<ol start="2" type="1">
+<li>Zero-inflated model</li>
+</ol>
 </section>
 
 </main>
