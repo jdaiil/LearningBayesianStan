@@ -1,0 +1,333 @@
+---
+title: "Chapter 6"
+format: 
+  html:
+    toc: true
+    embed-resources: true
+---
+
+```{r}
+#| warning: false
+#| message: false
+
+library(tidyverse)
+library(cmdstanr)
+library(tidybayes)
+library(bayesplot)
+library(ggthemes)
+library(patchwork)
+library(easystats)
+```
+
+## 8.1 Introduction of Hiearchical Models 
+
+Import data
+```{r}
+df <- read_csv("https://raw.githubusercontent.com/MatsuuraKentaro/Bayesian_Statistical_Modeling_with_Stan_R_and_Python/refs/heads/master/chap08/input/data-salary-2.csv") |> 
+  mutate(
+    CID = factor(CID)
+  )
+```
+
+Figure 8.1 
+
+```{r}
+#Left
+ggplot(df, aes(x = X, y = Y)) + 
+  geom_point(aes(shape = CID)) + 
+  geom_smooth(method = "lm", se = FALSE)
+
+#right
+ggplot(df, aes(x = X, y = Y)) + 
+  geom_smooth(data = transform(df, CID = NULL), method = "lm", se = FALSE, color = "grey") +
+  geom_point(aes(shape = CID)) + 
+  geom_smooth(method = "lm", se = FALSE, linetype = 2) +
+  facet_wrap(~ CID)
+
+```
+
+Without considering group difference 
+Model 4.1 
+$$
+\begin{aligned}
+Y[n] = y_{base}[n] + \epsilon[n] && n = 1,...,N \\
+y_{base}[n] = a + bX[n] && n = 1,...,N \\
+\epsilon[n] \sim N(0, \sigma_{y}) && n = 1,...,N
+\end{aligned} \\
+\text{This is equivalent to }\\
+Y[n] \sim N(a + bX[n], \sigma_y)
+$$
+
+
+
+Model8-1
+```{stan}
+#| eval: false
+#| output.var: "model8-1"
+
+data{
+  int N;
+  vector[N] X;
+  vector[N] Y;
+}
+
+parameters{
+  real a;
+  real b;
+  real<lower=0> s_y;
+}
+
+model{
+  Y[1:N] ~ normal(a + b*X[1:N], s_y);
+}
+
+```
+
+```{r}
+stan_data8.1 <- list(
+  N = nrow(df),
+  X = df$X,
+  Y = df$Y
+)
+
+model_8.1 <- cmdstan_model("./model/model8-1.stan")
+
+
+fit_8.1 <- model_8.1$sample(
+  data = stan_data8.1,
+  refresh = 1000
+  )
+
+fit_8.1$summary()
+```
+
+Groups have varying intercepts and slopes (random effects)
+
+Model formula 8.2
+$$
+\begin{aligned}
+Y[n] \sim N(a[n2c[n]] + b[n2c[n]]X[n], \sigma_y) && n = 1,...,N
+\end{aligned}
+$$
+
+More conventional notation
+$$
+\begin{aligned}
+Y_{ij} \sim N(a_j + b_jX, \sigma_y) && i = 1,...,I && j = 1,...,J \\
+\end{aligned} \\
+\text{where i each observation belongs to j category}
+$$
+
+```{stan}
+#| eval: false
+#| output.var: "model_8.2"
+
+data{
+  int N;
+  int C;
+  vector[N] X;
+  vector[N] Y;
+  array[N] int<lower=1, upper = C> n2c; // indicates where each n belongs to category C 
+}
+
+parameters{
+  vector[C] a; // declares that a is a vector with C length 
+  vector[C] b;
+  real<lower=0> s_y;
+}
+
+model{
+  Y[1:N] ~ normal(a[n2c]+ b[n2c].*X[1:N], s_y); // .* means element-wise operator of multiplication
+}
+```
+
+This model is no-pulling. 
+```{r}
+stan_data8.2 <- list(
+  N = nrow(df),
+  C = length(levels(df$CID)),
+  X = df$X,
+  Y = df$Y,
+  n2c = df$CID
+)
+
+model_8.2 <- cmdstan_model("./model/model8-2.stan")
+
+model_8.2$sample(
+  data = stan_data8.2,
+  refresh = 1000,
+  parallel_chains = 4
+)
+
+```
+
+### 8.1.4 Hiearchical Model
+
+Model formula 8.3
+$$
+\begin{aligned}
+
+Y[n] \sim N(a[n2c[n]] + b[n2c[n]]X[n], \sigma_y) && n = 1,...,N \\
+a[c] = a_{field} + a_{diff}[c] && c = 1,...,C \\
+a_{diff}[c] \sim N(0, \sigma_a) && c = 1,...,C \\
+b[c] = b_{field} + b_{diff}[c] && c = 1,...,C \\
+b_{diff}[k] \sim N(0, \sigma_b) && c = 1,...,C \\
+
+\end{aligned}
+$$
+
+Simulate models
+```{r}
+set.seed(123)
+N <- 40 #total number of employees
+C <- 4 #total number of company 
+N_c <- c(15,12,10,3) #number of each company 
+a_field <- 350 #fixed intercept = population intercept
+b_field <- 12 #fixed slope = population slope 
+s_a <- 60 #random intercept
+s_b <- 4 #random slope 
+s_y <- 25 #error noise after model accounted 
+X <- sample(x = 0:35, size = N, replace = TRUE)
+n2c <- rep(1:4, times = N_c)
+
+a <- rnorm(C, mean = 0, sd = s_a) + a_field
+b <- rnorm(C, mean = 0, sd = s_b) + b_field
+d <- data.frame(
+  X = X, 
+  CID = factor(n2c),
+  a = a[n2c],
+  b = b[n2c],
+  Y_sim = rnorm(N, mean = a + b*X, sd = s_y)
+)
+
+stan_data8.3_sim <- list(
+  N = nrow(d),
+  C = length(levels(d$CID)),
+  X = d$X,
+  Y = d$Y_sim,
+  n2c = d$CID
+)
+
+```
+
+Fig 8.2 
+```{r}
+ggplot(d, aes(x = X, y = Y_sim, shape = factor(CID))) + 
+  geom_point() + 
+  geom_smooth(method = "lm") + 
+  facet_wrap(~ CID)
+```
+
+```{stan}
+#| eval: false
+#| output.var: "model8-3"
+
+data {
+  int N; //n of obs
+  int C; //n of company
+  vector[N] X;
+  vector[N] Y;
+  array[N] int<lower=1, upper=C> n2c; //company indexing 
+}
+
+parameters {
+  real a_field; // fixed intercept
+  real b_field; // fixed slope
+  vector[C] a_diff; //deviation from the fixed intercept
+  vector[C] b_diff; //deviation from the fixed slope
+  real<lower=0> s_a;
+  real<lower=0> s_b;
+  real<lower=0> s_y;
+}
+
+transformed parameters {
+  vector[C] a = a_field + a_diff[1:C]; //intercept for company C is composed of fixed and random intercept  
+  vector[C] b = b_field + b_diff[1:C];
+}
+
+model {
+  a_diff[1:C] ~ normal(0, s_a); //random effects - a difference is generated from the same normal distribution with sigma of s_a
+  b_diff[1:C] ~ normal(0, s_b); // random effects
+  
+  Y[1:N] ~ normal(a[n2c] + b[n2c].*X[1:N], s_y);
+}
+
+```
+
+```{r}
+model8.3 <- cmdstan_model("./model/model8-3.stan")
+
+fit_8.3_sim <- model8.3$sample(
+  data = stan_data8.3_sim,
+  refresh = 1000, 
+  parallel_chains = 4
+)
+
+fit_8.3_sim$summary()
+```
+
+```{r}
+stan_data8.3 <- stan_data8.2
+
+fit_8.3 <- model8.3$sample(
+  data = stan_data8.2,
+  refresh = 1000,
+  parallel_chains = 4
+)
+
+fit_8.3$summary()
+```
+
+Equivalent representation of Hiearchical Models 
+
+Model Formula 8.4
+$$
+\begin{aligned}
+Y[n] \sim N(a[n2c[n]] + b[n2c[n]]X[n], \sigma_y) && n = 1,...,N \\
+a[c] \sim N(a_{field}, \sigma_a) && c =1,...,C \\
+b[c] \sim N(b_{field}, \sigma_b) && c =1,...,C
+
+\end{aligned}
+$$
+
+```{stan}
+#| eval: false
+#| output.var: "model8-4"
+
+data{
+  int N;
+  int C;
+  vector[N] X;
+  vector[N] Y;
+  array[N] int<lower=1, upper=C> n2c;
+}
+
+parameters{
+  real a_field;
+  real b_field;
+  vector[C] a;
+  vector[C] b;
+  real<lower=0> s_a;
+  real<lower=0> s_b;
+  real<lower=0> s_y;
+}
+
+model{
+  a[1:C] ~ normal(a_field, s_a);
+  b[1:C] ~ normal(b_field, s_b);
+  
+  Y[1:N] ~ normal(a[n2c] + b[n2c].*X[1:N], s_y);
+}
+
+```
+
+```{r}
+model_8.4 <- cmdstan_model("./model/model8-4.stan")
+
+fit_8.4 <- model_8.4$sample(
+  data = stan_data8.3,
+  refresh = 1000,
+  parallel_chains = 4
+)
+```
+
